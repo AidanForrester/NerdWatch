@@ -38,7 +38,11 @@ int weatherAppselect = 1;
 float heartrateread = 0;
 
 int hour24,hour12,minute,second,day,month,year,weekday; //Make variables to write to when reading from the onboard rtc
-int start;
+
+long return_start; //globals for the long press state machine
+long return_last_state;
+int return_length;
+
 bool isPM, lastButtonstate;
 bool inHome, inMenu, inWeather, inStopwatch, inAlarm, inCompass, inGolf, inFind, inSettings; 
 bool sw = true;
@@ -582,7 +586,7 @@ void weatherAPP(float batterylife){
     tochar(day7min, "F", 1, 90, 32);
   }
   
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inWeather = false;
       inHome = true;
@@ -617,7 +621,7 @@ void stopwatchAPP(float batterylife){
   //TODO: Allow the timer to run, then haptic like nuts when it is over
 
   //TODO: Clear all the new variables
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inStopwatch = false;
       inHome = true;
@@ -634,7 +638,7 @@ void alarmAPP(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Alarms", 0, 1), 8, "Alarms");
   oled.invertText(false);
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inAlarm = false;
       inHome = true;
@@ -651,7 +655,7 @@ void compassAPP(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Compass", 0, 1), 8, "Compass");
   oled.invertText(false);
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inCompass = false;
       inHome = true;
@@ -672,7 +676,7 @@ void golfAPP(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Golf", 0, 1), 8, "Golf");
   oled.invertText(false);
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inGolf = false;
       inHome = true;
@@ -691,7 +695,7 @@ void findphoneAPP(float batterylife){
   oled.invertText(false);
 
   //TODO: Setup an HTTP client call to send an emergency priority ring to my phone
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inFind = false;
       inHome = true;
@@ -714,7 +718,7 @@ void settingsAPP(float batterylife){
   //TODO: Add settings for things like wifi networks, flashlight brightness, etc
 
   //TODO: Write to Preferences ROM to save these settings
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inSettings = false;
       inHome = true;
@@ -760,14 +764,14 @@ bool appCheck(float batterylife){
   }
 }
 
-int returnButtonlogic(int button){ //Returns an int based off how a button is pressed. Long press = 1, Short Press = 2
+int returnButtonlogic(int button, long starting, long laststate, int length){ //Returns an int based off how a button is pressed. Long press = 1, Short Press = 2
   if (digitalRead(button) == false && lastButtonstate == false){
     start = millis();
     lastButtonstate = true;
   }
   if (lastButtonstate == true && digitalRead(button) == true){
     lastButtonstate = false;
-    if (millis() - start <= 1150){
+    if (millis() - start <= length){
       return 2;
     }
     else{
@@ -784,7 +788,7 @@ void loop() {
 
   appCheck(averageArray());
 
-  if (returnButtonlogic(Button1) == 1){
+  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
     if (inMenu == true){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inMenu = false;
