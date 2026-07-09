@@ -1,0 +1,30 @@
+Index,LCSC#,MPN,Manufacturer,Package,Customer #,Description,RoHS,Quantity,MOQ,Multiple,Unit Price($),Extended Price($),Product Link
+1,C128624,CC0603KRX5R9BB105,YAGEO,0603,,1uF ±10% 50V Ceramic Capacitor X5R 0603,yes,50,50,50,0.0278,1.39,https://www.lcsc.com/product-detail/C128624.html
+2,C165948,TYPE-C-31-M-12,Korean Hroparts Elec,SMD,,USB-C (USB TYPE-C) Receptacle Connector 16 Position Surface Mount,yes,5,5,5,0.1709,0.85,https://www.lcsc.com/product-detail/C165948.html
+3,C970725,CH224K,WCH,ESSOP-10-150mil-1mm,,Power Receiver Controller 100W ESSOP-10-150mil-1mm Power Management - Specialized RoHS,yes,2,1,1,0.4860,0.97,https://www.lcsc.com/product-detail/C970725.html
+4,C351410,DW01A,PUOLOP,SOT-23-6L,,Lithium Battery SOT-23-6L Battery Management RoHS,yes,20,20,20,0.0432,0.86,https://www.lcsc.com/product-detail/C351410.html
+5,C2876573,TPS63000DRCT,TI,VSON-10-EP(3x3),,1.5MHz Buck-Boost Adjustable 1.2V~5.5V 1.8A VSON-10-EP(3x3) Voltage Regulators - DC DC Switching Regulators RoHS,yes,2,1,1,1.3654,2.73,https://www.lcsc.com/product-detail/C2876573.html
+6,C382139,TP4056,TPOWER,ESOP-8,,Lithium-ion/Polymer ESOP-8,yes,5,5,5,0.1188,0.59,https://www.lcsc.com/product-detail/C382139.html
+7,C404328,MMC5603NJ,MEMSIC,WLP-4(0.8x0.8),,"WLP-4(0.8x0.8) Linear, Compass (ICs) RoHS",yes,5,5,5,0.2885,1.44,https://www.lcsc.com/product-detail/C404328.html
+8,C125972,BME680,Bosch,LGA-8,,30Kpa~1.1bar LGA-8 Specialized Sensors RoHS,yes,2,1,1,10.7085,21.42,https://www.lcsc.com/product-detail/C125972.html
+9,C464452,BHI160B,Bosch,LGA-24(3x3),,LGA-24(3x3) IMUs (Inertial Measurement Units) RoHS,yes,2,1,1,4.6132,9.23,https://www.lcsc.com/product-detail/C464452.html
+10,C720477,TS-1088-AR02016,XUNPU,"SMD,4x3mm",,Tactile Switch SPST 160gf 2mm SMD (SMT) Tab 4mm x 3mm Surface Mount,yes,10,10,10,0.0557,0.56,https://www.lcsc.com/product-detail/C720477.html
+11,C122970,RT0603BRD07100RL,YAGEO,0603,,100mW 100Ω 75V Thin Film Resistor ±25ppm/℃ ±0.1% 0603 Chip Resistor - Surface Mount RoHS,yes,20,20,20,0.0294,0.59,https://www.lcsc.com/product-detail/C122970.html
+12,C2906980,FRC0603F1003TS,FOJAN,0603,,100kΩ ±1% 100mW 0603 Thick Film Resistor,yes,100,100,100,0.0028,0.28,https://www.lcsc.com/product-detail/C2906980.html
+13,C325723,RMC 0603 91K F N,TyoHM,0603,,91kΩ ±1% 100mW 0603 Thick Film Resistor,yes,100,100,100,0.0036,0.36,https://www.lcsc.com/product-detail/C325723.html
+14,C23252,0603WAF8203T5E,UNI-ROYAL,0603,,820kΩ ±1% 100mW 0603 Thick Film Resistor,yes,100,100,100,0.0034,0.34,https://www.lcsc.com/product-detail/C23252.html
+15,C2907002,FRC0603F1001TS,FOJAN,0603,,1kΩ ±1% 100mW 0603 Thick Film Resistor,yes,100,100,100,0.0057,0.57,https://www.lcsc.com/product-detail/C2907002.html
+16,C473261,ERA3AEB204V,PANASONIC,0603,,200kΩ ±0.1% 100mW 0603 Thin Film Resistor AEC-Q200,yes,20,5,5,0.0760,1.52,https://www.lcsc.com/product-detail/C473261.html
+17,C313719,CRCW06032K00FKEAHP,VISHAY,0603,,333mW 2kΩ 75V Thick Film Resistor ±1% ±100ppm/℃ 0603 Chip Resistor - Surface Mount RoHS,yes,20,20,20,0.0393,0.79,https://www.lcsc.com/product-detail/C313719.html
+18,C844791,CRCW06034K70FKEAHP,VISHAY,0603,,333mW 4.7kΩ Thick Film Resistor ±100ppm/℃ ±1% 0603 Chip Resistor - Surface Mount RoHS,yes,40,20,20,0.0415,1.66,https://www.lcsc.com/product-detail/C844791.html
+19,C28646320,BS170FTA,TECH PUBLIC,SOT-23,,60V 0.3A 0.35W Surface Mount SOT-23,yes,50,50,50,0.0212,1.06,https://www.lcsc.com/product-detail/C28646320.html
+20,C5148694,8205A,HXY MOSFET,TSSOP-8,,N-Channel Array 20V 6A 1.5W Surface Mount TSSOP-8,yes,10,10,10,0.0628,0.63,https://www.lcsc.com/product-detail/C5148694.html
+21,C135262,SMNR4020-2.2UH,Shun Xiang Nuo,"SMD,4x4mm",,"3.4A 2.2uH ±20% 3.4A 46mΩ SMD,4x4mm Fixed Inductors RoHS",yes,10,10,10,0.0584,0.58,https://www.lcsc.com/product-detail/C135262.html
+22,C2988774,1N5819W,Guangdong Hottech,SOD-123,,Diode 40V 1A Surface Mount SOD-123,yes,50,50,50,0.0167,0.84,https://www.lcsc.com/product-detail/C2988774.html
+23,C20608784,YLED0402G,YONGYUTAI,0402,,Emerald Green 525nm LED Indication - Discrete 2.4V~3.1V 0402,yes,50,50,50,0.0145,0.73,https://www.lcsc.com/product-detail/C20608784.html
+24,C130719,NCD0402R1,NATIONSTAR,0402,,Red 630nm LED Indication - Discrete 1.6V~2.6V 0402,yes,20,20,20,0.0403,0.81,https://www.lcsc.com/product-detail/C130719.html
+25,C57895,CL10A225KA8NNNC,Samsung Electro-Mechanics,0603,,2.2uF ±10% 25V Ceramic Capacitor X5R 0603,yes,50,50,50,0.0231,1.16,https://www.lcsc.com/product-detail/C57895.html
+26,C1691,CL10A106MQ8NNNC,Samsung Electro-Mechanics,0603,,10uF ±20% 6.3V Ceramic Capacitor X5R 0603,yes,50,50,50,0.0355,1.78,https://www.lcsc.com/product-detail/C1691.html
+27,C100042,CC0603KRX7R9BB103,YAGEO,0603,,10nF ±10% 50V Ceramic Capacitor X7R 0603,yes,50,50,50,0.0155,0.78,https://www.lcsc.com/product-detail/C100042.html
+28,C1623,CL10B474KA8NNNC,Samsung Electro-Mechanics,0603,,470nF ±10% 25V Ceramic Capacitor X7R 0603,yes,50,50,50,0.0256,1.28,https://www.lcsc.com/product-detail/C1623.html
+29,C15725,CL10B104KC8NNNC,Samsung Electro-Mechanics,0603,,100nF ±10% 100V Ceramic Capacitor X7R 0603,yes,50,50,50,0.0221,1.11,https://www.lcsc.com/product-detail/C15725.html
