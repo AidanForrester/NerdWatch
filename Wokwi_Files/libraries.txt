@@ -7,3 +7,6 @@ AdvancedOximeter
 WiFi
 Time
 ArduinoJson
+Deneyap 9-Eksen Ataletsel Olcum Birimi
+BoschSensorHub-master@wokwi:2cf191abf8b2739c4be1e4a4629eed20919b90d1
+Adafruit NeoPixel
