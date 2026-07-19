@@ -1,17 +1,26 @@
-#include <Adafruit_BME680.h>
-//#include <bhy.h>
 #include <time.h>
+#include <esp_sntp.h>
 #include <WiFi.h>
-#include <ArduinoJson.h>
-#include <HTTPClient.h>
 
 #include <GyverOLED.h>
 #include <AdvancedOximeter.h>
+#include <Deneyap_9EksenAtaletselOlcumBirimi.h>  
+#include <Adafruit_BME680.h>
+#include <Adafruit_NeoPixel.h>
+
+#include <bhy.h>
+//if WOKWI 
+#include "Bosch_PCB_7183_di03_BMI160_BMM150-7183_di03.2.1.11696_170103.h"
+//#include "firmware\Bosch_PCB_7183_di03_BMI160_BMM150-7183_di03.2.1.11696_170103.h"
+
 #include <math.h>
+#include <cmath>
+#include <ArduinoJson.h>
+#include <HTTPClient.h>
 //Icons converted from https://www.iconarchive.com/show/material-battery-icons-by-pictogrammers.html
-#include <batteryicons.h>
-#include <invertedbatteryicons.h>
-#include <appicons.h>
+#include "batteryicons.h"
+#include "invertedbatteryicons.h"
+#include "nerdwatch_icons.h"
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
@@ -22,33 +31,104 @@ const int   daylightOffset_sec = 3600;
 
 #define battery_pin 0
 #define divider_on false
-#define BHI_INT 8
 #define Button1 5
 #define Button2 6
 #define Haptic 2
+#define BHI_INT 4
+#define fl 3
 
 Adafruit_BME680 bme;
+MAGNETOMETER Magne;    
 GyverOLED<SSD1306_128x64, OLED_BUFFER> oled;
 AdvancedOximeter oximeter;
+BHYSensor bhi;
+Adafruit_NeoPixel light(1,fl,NEO_GRB + NEO_KHZ800);
+
+volatile bool intrToggled = false;
 
 float batteryReads[20];
 int listcountcurrent = 0;
 int appSelect = 1;
-int weatherAppselect = 1;
+int weatherAppselect = 0;
 float heartrateread = 0;
 
 int hour24,hour12,minute,second,day,month,year,weekday; //Make variables to write to when reading from the onboard rtc
 
-long return_start; //globals for the long press state machine
-long return_last_state;
-int return_length;
+unsigned long return_start; //globals for the long press state machine
+unsigned long return_last_state;
+int return_length = 1500;
+
+unsigned long sw_start; //globals for the long press state machine - stopwatch menus
+unsigned long sw_last_state;
+int sw_length = 1500;
+char swBuffer[16] = "0:00:00:00";
+uint64_t elapsedtimecurrent = 0;
+
+unsigned long stop_start; //globals for the long press state machine - stopwatch start/stop
+unsigned long stop_last_state;
+int stop_length = 1500;
+
+unsigned long weather_start; //globals for the long press state machine - weather app
+unsigned long weather_last_state;
+int weather_length = 1500;
+
+unsigned long weather2_start; //globals for the long press state machine - weather app button 2
+unsigned long weather2_last_state;
+int weather2_length = 1500;
+
+unsigned long s_start; //globals for the long press state machine - settings app button 1
+unsigned long s_last_state;
+int s_length = 1500;
+
+unsigned long s2_start; //globals for the long press state machine - settings app button 2
+unsigned long s2_last_state;
+int s2_length = 1500;
+
+unsigned long m_start; //globals for the long press state machine - menu button 1
+unsigned long m_last_state;
+int m_length = 1500;
+
+unsigned long m2_start; //globals for the long press state machine - menu button 2
+unsigned long m2_last_state;
+int m2_length = 1500;
+
+bool sw_on = false;
+
+int hours_select = 0;
+int minutes_select = 0;
+int seconds_select = 0;
+int* selection[3] = {&hours_select,&minutes_select,&seconds_select};
+int current_selection = -1;
+unsigned long previous = millis();
+unsigned long now = 0;
+bool on = false;
+
+unsigned long alarm_start; //globals for the long press state machine - alarm selection
+unsigned long alarm_last_state;
+int alarm_length = 1500;
+unsigned long alarm2_start; 
+unsigned long alarm2_last_state;
+int alarm2_length = 1500;
+
+const char* amorpm = "AM";
+uint64_t desired_wakeup = 0;
+int Acurrent_selection = -1;
+int Ahours_select = 0;
+int Aminutes_select = 0;
+int* selectionA[2] = {&Ahours_select,&Aminutes_select};
+
+bool timer_on = false;
+uint64_t useconds_left;
+uint64_t desired_end;
+bool aftertime = false;
 
 bool isPM, lastButtonstate;
 bool inHome, inMenu, inWeather, inStopwatch, inAlarm, inCompass, inGolf, inFind, inSettings; 
-bool sw = true;
-bool firstfetch = true;
+bool swAppselect = true;
 int64_t lastfetch;
 String payload;
+
+int64_t starttime;
 
 const char* day1;
 const char* day2;
@@ -69,6 +149,182 @@ float* hours[24] = {
 int hours_to_show;
 int pagestoshow;
 
+struct tm timeinfo; //Have the time library create a usable struct to get time variables from
+struct tm alarminfo;
+
+float heading = 0;
+float nadjusted = 0;
+float dheading = 0;
+float x_offset = 0;
+float y_offset = 0;
+
+float xstart = 93;
+float ystart = 32;
+float xend = 0;
+float yend = 0;
+
+time_t timenow;
+RTC_DATA_ATTR time_t alarm_now;
+RTC_DATA_ATTR signed long long waittime;
+
+bhySensorStatus sensorStatus;
+bhySensorStatus sensorStatus2;
+bhySensorStatus sensorStatus3;
+
+int stepday = 0;
+uint16_t steps = 0;
+uint16_t yesterdaySteps = 0;
+
+
+float currentXmax = 0;
+float currentYmax = 0;
+float currentXmin = 0;
+float currentYmin = 0;
+
+int SettingsappSelect = 1;
+
+void tiltHandler(bhyVirtualSensor id){
+  return;
+}
+
+void stepHandler(uint16_t data, bhyVirtualSensor id){
+  if (stepday == day){
+    steps = data - yesterdaySteps;
+  }
+  else{
+    stepday = day;
+    yesterdaySteps = data;
+    steps = data - yesterdaySteps;
+    }
+  return;
+}
+
+uint64_t last_chop = 0;
+bool isFlashOn = false;
+
+void flashHandle(uint16_t data, bhyVirtualSensor id){
+  if (esp_timer_get_time() - last_chop <= 500000){
+    last_chop = esp_timer_get_time();
+    isFlashOn = !isFlashOn;
+    if (isFlashOn == true){
+      light.setPixelColor(0,255,255,255);
+      light.show();
+    }
+    else{
+      light.setPixelColor(0,0,0,0);
+      light.show();
+    }
+  }
+  else{
+    last_chop = esp_timer_get_time();
+  }
+}
+
+uint64_t startwait = 0;
+bool firstwait = true;
+
+void api_pull(){
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(ssid, password, 6);
+  while (WiFi.status() != WL_CONNECTED){
+    delay(50);
+  }
+
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer); //Steal time from ntp server with the correct config
+
+    HTTPClient client;
+    client.begin("https://api.open-meteo.com/v1/forecast?latitude=42.0104798&longitude=-71.301051&hourly=temperature_2m,precipitation&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&temperature_unit=fahrenheit&forecast_days=8&timezone=auto");
+    int error = client.GET();
+    if (error == HTTP_CODE_OK){
+      payload = client.getString();
+    }
+    client.end();
+
+    JsonDocument doc;
+    DeserializationError dse = deserializeJson(doc, payload);
+
+    if (dse){
+      inWeather = false;
+      inMenu = true;
+      oled.clear();
+      oled.fill(1);
+      return;
+    }
+
+    day1max = doc["daily"]["temperature_2m_max"][1];
+    day1min = doc["daily"]["temperature_2m_min"][1];
+    day2max = doc["daily"]["temperature_2m_max"][2];
+    day2min = doc["daily"]["temperature_2m_min"][2];
+    day3max = doc["daily"]["temperature_2m_max"][3];
+    day3min = doc["daily"]["temperature_2m_min"][3];
+    day4max = doc["daily"]["temperature_2m_max"][4];
+    day4min = doc["daily"]["temperature_2m_min"][4];
+    day5max = doc["daily"]["temperature_2m_max"][5];
+    day5min = doc["daily"]["temperature_2m_min"][5];
+    day6max = doc["daily"]["temperature_2m_max"][6];
+    day6min = doc["daily"]["temperature_2m_min"][6];
+    day7max = doc["daily"]["temperature_2m_max"][7];
+    day7min = doc["daily"]["temperature_2m_min"][7];
+
+    day1p = doc["daily"]["precipitation_sum"][1];
+    day2p = doc["daily"]["precipitation_sum"][2];
+    day3p = doc["daily"]["precipitation_sum"][3];
+    day4p = doc["daily"]["precipitation_sum"][4];
+    day5p = doc["daily"]["precipitation_sum"][5];
+    day6p = doc["daily"]["precipitation_sum"][6];
+    day7p = doc["daily"]["precipitation_sum"][7];
+
+    today0 = doc["hourly"]["temperature_2m"][0];
+    today1  = doc["hourly"]["temperature_2m"][1];
+    today2  = doc["hourly"]["temperature_2m"][2];
+    today3  = doc["hourly"]["temperature_2m"][3];
+    today4  = doc["hourly"]["temperature_2m"][4];
+    today5  = doc["hourly"]["temperature_2m"][5];
+    today6  = doc["hourly"]["temperature_2m"][6];
+    today7  = doc["hourly"]["temperature_2m"][7];
+    today8  = doc["hourly"]["temperature_2m"][8];
+    today9  = doc["hourly"]["temperature_2m"][9];
+    today10 = doc["hourly"]["temperature_2m"][10];
+    today11 = doc["hourly"]["temperature_2m"][11];
+    today12 = doc["hourly"]["temperature_2m"][12];
+    today13 = doc["hourly"]["temperature_2m"][13];
+    today14 = doc["hourly"]["temperature_2m"][14];
+    today15 = doc["hourly"]["temperature_2m"][15];
+    today16 = doc["hourly"]["temperature_2m"][16];
+    today17 = doc["hourly"]["temperature_2m"][17];
+    today18 = doc["hourly"]["temperature_2m"][18];
+    today19 = doc["hourly"]["temperature_2m"][19];
+    today20 = doc["hourly"]["temperature_2m"][20];
+    today21 = doc["hourly"]["temperature_2m"][21];
+    today22 = doc["hourly"]["temperature_2m"][22];
+    today23 = doc["hourly"]["temperature_2m"][23];
+
+    day1 = weekdayConverter(weekday + 1);
+    day2 = weekdayConverter(weekday + 2);
+    day3 = weekdayConverter(weekday + 3);
+    day4 = weekdayConverter(weekday + 4);
+    day5 = weekdayConverter(weekday + 5);
+    day6 = weekdayConverter(weekday + 6);
+    day7 = weekdayConverter(weekday + 7);
+
+    while (sntp_get_sync_status() != SNTP_SYNC_STATUS_COMPLETED){
+      if (firstwait == true){
+        startwait = esp_timer_get_time();
+        firstwait = false;
+      }
+      if (esp_timer_get_time() - startwait >= 10000000){
+        break;
+      }
+      else{
+        delay(10);
+      }
+    }
+
+    startwait = 0;
+    firstwait = true;
+    WiFi.disconnect(true);
+  }
+
 void setup() {
   Serial.begin(9600);
 
@@ -77,22 +333,56 @@ void setup() {
   pinMode(Button2, INPUT_PULLUP);
   pinMode(Haptic, OUTPUT);
 
-  WiFi.begin(ssid, password, 6);
-  while (WiFi.status() != WL_CONNECTED){
-    delay(500);
-  }
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer); //Steal time from ntp server with the correct config
-
   Wire.begin(8,9);
+
+  api_pull();
 
   oled.init();
   oximeter.begin();
+  bme.begin();
+  Magne.begin(0x60); //Magne.readMagnetometerX()
   inHome=inMenu=inWeather=inStopwatch=inAlarm=inCompass=inGolf=inFind=inSettings=false; 
   inHome = true;
+
+  bhi.begin(BHY_I2C_ADDR2);
+  bhi.loadFirmware(bhy1_fw);
+
+  bhi.configVirtualSensor((bhyVirtualSensor)BHY_VS_STEP_COUNTER, true, BHY_FLUSH_ALL, 1, 0, 0, 0);
+  int8_t result = bhi.installSensorCallback(BHY_VS_STEP_COUNTER, false, stepHandler);
+
+  bhi.configVirtualSensor((bhyVirtualSensor)BHY_VS_LINEAR_ACCELERATION, true, BHY_FLUSH_ALL,50,0,0,0);
+  int8_t result3 = bhi.installSensorCallback(BHY_VS_LINEAR_ACCELERATION, false, flashHandle);
+
+  bhi.configVirtualSensor((bhyVirtualSensor)BHY_VS_TILT, true, BHY_FLUSH_ALL, 0, 0, 0, 0);
+  int8_t result2 = bhi.installSensorCallback(BHY_VS_TILT, true, tiltHandler);
+
+  esp_deep_sleep_enable_gpio_wakeup(1ULL << BHI_INT, ESP_GPIO_WAKEUP_GPIO_HIGH);
+
+  bhi.getSensorStatus((bhyVirtualSensor)BHY_VS_TILT, true, &sensorStatus);
+  if (sensorStatus.power_mode == 7){
+  }
+  //else{
+    //ESP.restart();
+  //}
+
+  bhi.getSensorStatus((bhyVirtualSensor)BHY_VS_LINEAR_ACCELERATION, true, &sensorStatus3);
+  if(sensorStatus3.power_mode == 7){
+  }
+  //else{
+    //ESP.restart();
+  //}
+
+  bhi.getSensorStatus((bhyVirtualSensor)BHY_VS_STEP_COUNTER, true, &sensorStatus2);
+  if (sensorStatus2.power_mode == 7){
+  }
+  //else{
+    //ESP.restart();
+  //}
+
+  bhi.run();
 }
 
 void printlocaltime(){
-  struct tm timeinfo; //Have the time library create a usable struct to get time variables from
   if(!getLocalTime(&timeinfo)){ //Try to get teh local time from the rtc, return if that fails
     return;
   }
@@ -241,20 +531,30 @@ void menu(float batterylife){
   oled.rect(1,1,16,16,0);
   battery(batterylife, 1);
   oled.drawBitmap(13, 24, ICON_WEATHER, WEATHER_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 24, LABEL_WEATHER, LABEL_WEATHER_W, 8);
 
   oled.drawBitmap(13, 34, ICON_STOPWATCH, STOPWATCH_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 34, LABEL_STOPWATCH, LABEL_STOPWATCH_W, 8);
 
   oled.drawBitmap(13, 44, ICON_COMPASS, COMPASS_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 44, LABEL_COMPASS, LABEL_COMPASS_W, 8);
 
   oled.drawBitmap(13, 54, ICON_ALARM, ALARM_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 54, LABEL_ALARM, LABEL_ALARM_W, 8);
 
-  oled.drawBitmap(73, 24, ICON_GOLF, GOLF_W, 8);
+  oled.drawBitmap(73, 24, ICON_CRASH, CRASH_W, 8);
+  oled.drawBitmap(73 + 8 + 2, 24, LABEL_CRASH, LABEL_CRASH_W, 8);
 
   oled.drawBitmap(73, 34, ICON_FINDPHONE, FINDPHONE_W, 8);
+  oled.drawBitmap(73 + 8 + 2, 34, LABEL_FINDPHONE, LABEL_FINDPHONE_W, 8);
 
   oled.drawBitmap(73, 44, ICON_SETTINGS, SETTINGS_W, 8);
+  oled.drawBitmap(73 + 8 + 2, 44, LABEL_SETTINGS, LABEL_SETTINGS_W, 8);
 
-  if (digitalRead(Button1) == false && digitalRead(Button2) == false){
+  int button_one_result = Buttonlogic(Button1,m_start,m_last_state,m_length);
+  int button_two_result = Buttonlogic(Button2,m2_start,m2_last_state,m2_length);
+
+  if (button_one_result == 1 && button_two_result == 1){
     if (appSelect == 1){
       weatherAppselect = 1;
       weatherAPP(averageArray());
@@ -269,7 +569,7 @@ void menu(float batterylife){
       alarmAPP(averageArray());
     }
     if (appSelect == 5){
-      golfAPP(averageArray());
+      crashAPP();
     }
     if (appSelect == 6){
       findphoneAPP(averageArray());
@@ -279,7 +579,7 @@ void menu(float batterylife){
     }
   }
 
-  else if (digitalRead(Button2) == false){
+  else if (button_two_result == 1){
     if (appSelect == 7){
       appSelect = 7;
     }
@@ -287,7 +587,7 @@ void menu(float batterylife){
       appSelect++;
     }
   }
-  else if (digitalRead(Button1) == false){
+  else if (button_one_result == 1){
     if (appSelect == 1){
       appSelect = 1;
     }
@@ -376,6 +676,10 @@ void drawBars(int startindex, float lowest, float highest, int hours_left)  {
     }
 }
 
+void crashAPP(){
+  ESP.restart();
+}
+
 void weatherAPP(float batterylife){
   inMenu = false;
   inWeather = true;
@@ -386,85 +690,9 @@ void weatherAPP(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Weather", 0, 1), 8, "Weather");
   oled.invertText(false);
-
-  if (esp_timer_get_time() - lastfetch >= 120000000 || firstfetch == true){
-    firstfetch = false;
-    lastfetch = esp_timer_get_time();
-    HTTPClient client;
-    client.begin("https://api.open-meteo.com/v1/forecast?latitude=42.0104798&longitude=-71.301051&hourly=temperature_2m,precipitation&daily=temperature_2m_max,temperature_2m_min,precipitation_sum&temperature_unit=fahrenheit&forecast_days=8&timezone=auto");
-    int error = client.GET();
-    if (error == HTTP_CODE_OK){
-      payload = client.getString();
-    }
-    client.end();
-
-    JsonDocument doc;
-    DeserializationError dse = deserializeJson(doc, payload);
-
-    if (dse){
-      inWeather = false;
-      inMenu = true;
-      oled.clear();
-      oled.fill(1);
-      return;
-    }
-
-    day1max = doc["daily"]["temperature_2m_max"][1];
-    day1min = doc["daily"]["temperature_2m_min"][1];
-    day2max = doc["daily"]["temperature_2m_max"][2];
-    day2min = doc["daily"]["temperature_2m_min"][2];
-    day3max = doc["daily"]["temperature_2m_max"][3];
-    day3min = doc["daily"]["temperature_2m_min"][3];
-    day4max = doc["daily"]["temperature_2m_max"][4];
-    day4min = doc["daily"]["temperature_2m_min"][4];
-    day5max = doc["daily"]["temperature_2m_max"][5];
-    day5min = doc["daily"]["temperature_2m_min"][5];
-    day6max = doc["daily"]["temperature_2m_max"][6];
-    day6min = doc["daily"]["temperature_2m_min"][6];
-    day7max = doc["daily"]["temperature_2m_max"][7];
-    day7min = doc["daily"]["temperature_2m_min"][7];
-
-    day1p = doc["daily"]["precipitation_sum"][1];
-    day2p = doc["daily"]["precipitation_sum"][2];
-    day3p = doc["daily"]["precipitation_sum"][3];
-    day4p = doc["daily"]["precipitation_sum"][4];
-    day5p = doc["daily"]["precipitation_sum"][5];
-    day6p = doc["daily"]["precipitation_sum"][6];
-    day7p = doc["daily"]["precipitation_sum"][7];
-
-    today0 = doc["hourly"]["temperature_2m"][0];
-    today1  = doc["hourly"]["temperature_2m"][1];
-    today2  = doc["hourly"]["temperature_2m"][2];
-    today3  = doc["hourly"]["temperature_2m"][3];
-    today4  = doc["hourly"]["temperature_2m"][4];
-    today5  = doc["hourly"]["temperature_2m"][5];
-    today6  = doc["hourly"]["temperature_2m"][6];
-    today7  = doc["hourly"]["temperature_2m"][7];
-    today8  = doc["hourly"]["temperature_2m"][8];
-    today9  = doc["hourly"]["temperature_2m"][9];
-    today10 = doc["hourly"]["temperature_2m"][10];
-    today11 = doc["hourly"]["temperature_2m"][11];
-    today12 = doc["hourly"]["temperature_2m"][12];
-    today13 = doc["hourly"]["temperature_2m"][13];
-    today14 = doc["hourly"]["temperature_2m"][14];
-    today15 = doc["hourly"]["temperature_2m"][15];
-    today16 = doc["hourly"]["temperature_2m"][16];
-    today17 = doc["hourly"]["temperature_2m"][17];
-    today18 = doc["hourly"]["temperature_2m"][18];
-    today19 = doc["hourly"]["temperature_2m"][19];
-    today20 = doc["hourly"]["temperature_2m"][20];
-    today21 = doc["hourly"]["temperature_2m"][21];
-    today22 = doc["hourly"]["temperature_2m"][22];
-    today23 = doc["hourly"]["temperature_2m"][23];
-
-    day1 = weekdayConverter(weekday + 1);
-    day2 = weekdayConverter(weekday + 2);
-    day3 = weekdayConverter(weekday + 3);
-    day4 = weekdayConverter(weekday + 4);
-    day5 = weekdayConverter(weekday + 5);
-    day6 = weekdayConverter(weekday + 6);
-    day7 = weekdayConverter(weekday + 7);
-  }
+  
+  int button_one_result = Buttonlogic(Button1,weather_start,weather_last_state,weather_length);
+  int button_two_result = Buttonlogic(Button2,weather2_start,weather2_last_state,weather2_length);
 
   float highest = 0;
   float lowest = 100;
@@ -480,7 +708,7 @@ void weatherAPP(float batterylife){
   hours_to_show = 24 - hour24;
   pagestoshow = ceil(hours_to_show / 4.0);
 
-  if (digitalRead(Button2) == false){
+  if (button_two_result == 1){
     if (weatherAppselect == (pagestoshow + 4)){
       weatherAppselect = 1;
     }
@@ -488,7 +716,7 @@ void weatherAPP(float batterylife){
       weatherAppselect++;
     }
   }
-  else if (digitalRead(Button1) == false){
+  else if (button_one_result == 1){
     if (weatherAppselect == 1){
       weatherAppselect = (pagestoshow + 5);
     }
@@ -585,12 +813,7 @@ void weatherAPP(float batterylife){
     tochar(day7max, "F", 1, 50, 32);
     tochar(day7min, "F", 1, 90, 32);
   }
-  
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inWeather = false;
-      inHome = true;
-  }
+
   oled.rect(120,18,128,54,0);
 }
 
@@ -602,30 +825,173 @@ void stopwatchAPP(float batterylife){
   oled.rect(1,1,16,16,0);
   battery(batterylife, 1);
   oled.invertText(true);
-  if (sw == true){
+  
+  int button_one_result = Buttonlogic(Button1,stop_start,stop_last_state,stop_length);
+  int button_two_result = Buttonlogic(Button2,sw_start,sw_last_state,sw_length);
+
+  if (swAppselect == true){
     drawtext(1, rightalign("Stopwatch", 0, 1), 8, "Stopwatch");
+    oled.invertText(false);
+    drawtext(1, 5, 60, "1=Restart");
+    drawtext(1, rightalign("2=Resume", 0, 1), 60, "2=Resume");
+    oled.invertText(true);
   }
+  
   else{
     drawtext(1, rightalign("Timer", 0, 1), 8, "Timer");
+    oled.invertText(false);
+    drawtext(1, 5, 60, "1/2=Up/Down");
+    drawtext(1, rightalign("1+2=Start", 0, 1), 60, "1+2=Start");
+    oled.invertText(true);
   }
   oled.invertText(false);
 
-  //TODO: Take the esp_timer_get_time() and store it until the start stop is pressed
-
-  //TODO: Subtract the initial from the current esp_timer_get_time() And display that, overflowing to minutes if needed
-
-  //TODO: Add menu tabs to switch to timer
-
-  //TODO: Use Buttoms to set a slider for the timer duration
-
-  //TODO: Allow the timer to run, then haptic like nuts when it is over
-
-  //TODO: Clear all the new variables
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inStopwatch = false;
-      inHome = true;
+  if (button_two_result == 2){
+    swAppselect  = !swAppselect;
+    if (swAppselect == false){
+      hours_select = 0;
+      minutes_select = 0;
+      seconds_select = 0;
+    }
   }
+
+  if (button_one_result == 1 || button_two_result == 1 && swAppselect == true){
+    sw_on = !sw_on;
+    if (sw_on == false){
+      elapsedtimecurrent = esp_timer_get_time() - starttime;
+    }
+    if (sw_on == true && button_two_result == 1){
+      starttime = esp_timer_get_time();
+      starttime = starttime - elapsedtimecurrent;
+    }
+    if (sw_on == true && button_one_result == 1){
+      starttime = esp_timer_get_time();
+    }
+  }
+
+  if (sw_on == true && swAppselect == true){
+    uint64_t current = esp_timer_get_time() - starttime;
+    int s = ((int)current / 1000000) % 60;
+    float fractional_s = (float)current / 1000000;
+    int m = (int(current) / 60000000) % 60;
+    int h = (int(current) / 3600000000) % 60;
+
+    float ds;
+
+    ds=std::modf(fractional_s, &ds);
+    ds = ds * 100.0f;
+
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%01d:%02d:%02d:%02d",(int)h,(int)m,(int)s,(int)ds);
+    drawtext(2,5,35,buffer);
+    memcpy(swBuffer, buffer, sizeof(buffer));}
+
+  if (sw_on == false && swAppselect == true){
+    drawtext(2,5,35,swBuffer);
+  }
+
+  if(swAppselect == false && timer_on == false && aftertime == false){
+    char buffer[16];
+    snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d",hours_select,minutes_select,seconds_select);
+    drawtext(2,15,35,buffer);
+    
+    if (button_one_result == 1){
+      *selection[current_selection] = *selection[current_selection] + 1;
+      if (*selection[current_selection] > 59){
+        *selection[current_selection] = 0;
+      }
+    }
+
+    if (button_two_result == 1){
+      *selection[current_selection] = *selection[current_selection] - 1;
+      if (*selection[current_selection] < 0){
+        *selection[current_selection] = 59;
+      }
+    }
+  }
+
+  if (button_one_result == 1 && button_two_result == 1 && current_selection != 2){
+    current_selection = current_selection + 1;
+  }
+  else if (button_one_result == 1 && button_two_result == 1 && current_selection == 2){
+    current_selection = -1;
+    timer_on = !timer_on;
+    if (timer_on == true){
+      desired_end = (hours_select * 3600000000) + (minutes_select * 60000000) + (seconds_select * 1000000);
+      starttime = esp_timer_get_time();
+    }
+  }
+
+    if (swAppselect == false && timer_on == true){
+      //TODO: Allow the timer to run, then haptic like nuts when it is over
+      if ((esp_timer_get_time() - starttime) <= desired_end && timer_on == true){
+        useconds_left = desired_end - (esp_timer_get_time() - starttime);
+        int s = ((useconds_left) / 1000000) % 60;
+        int m = ((useconds_left) / 60000000) % 60;
+        int h = ((useconds_left) / 3600000000) % 60;
+        
+        char buffer[16];
+        snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d",h,m,s);
+        drawtext(2,15,35,buffer);
+      }
+      else{
+        useconds_left = 0;
+        aftertime = true;
+        timer_on = false;
+      }
+    }
+
+  if (aftertime == true){
+    now = millis();
+    if (now - previous >= 250){
+      previous = now;
+      on = !on;
+    }
+    if (on == true){
+      drawtext(2,15,35,"00:00:00");
+    }
+    if (button_one_result == 1 && button_two_result == 1){
+      useconds_left = 0;
+      desired_end = 0;
+      timer_on = false;
+      sw_on = false;
+      aftertime = false;}
+  }
+
+
+  if (button_one_result == 2){
+    useconds_left = 0;
+    desired_end = 0;
+    timer_on = false;
+    sw_on = 0;
+    aftertime = false;
+  }
+}
+
+void compassAPP(float batterylife){
+  inMenu = false;
+  inCompass = true;
+  oled.fill(0);
+  oled.rect(0,0,50,64,1);
+  oled.rect(1,1,16,16,0);
+  battery(batterylife, 1);
+  oled.invertText(true);
+  drawtext(1, 5, 56, "Compass");
+  oled.invertText(false);
+
+  heading = atan2((Magne.readMagnetometerY() - y_offset), (Magne.readMagnetometerX() - x_offset));
+  dheading = atan2((Magne.readMagnetometerY() - y_offset), (Magne.readMagnetometerX() - x_offset))*(180/PI);
+
+  tocharinverted(heading,"",1,5,32);
+
+  nadjusted = heading + (PI/2); //Put North "UP"
+
+  xend = (xstart + (20 * cos(nadjusted)));
+  yend = (ystart - (20 * sin(nadjusted)));
+
+  oled.line(xstart,ystart,xend,yend);
+
+  oled.drawBitmap(63, 1, COMPASS_DIAL, COMPASS_DIAL_W, 62);
 }
 
 void alarmAPP(float batterylife){
@@ -638,34 +1004,71 @@ void alarmAPP(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Alarms", 0, 1), 8, "Alarms");
   oled.invertText(false);
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inAlarm = false;
-      inHome = true;
+
+  int button_one_result = Buttonlogic(Button1,alarm_start,alarm_last_state,alarm_length);
+  int button_two_result = Buttonlogic(Button2,alarm2_start,alarm2_last_state,alarm2_length);
+
+  if (Acurrent_selection == 0){
+    if (*selectionA[Acurrent_selection] >= 12){
+      amorpm = "PM";
+    }
+    else{
+      amorpm = "AM";
+    }
+    if (*selectionA[Acurrent_selection] > 23){
+      *selectionA[Acurrent_selection] = 0;
+      amorpm = "AM";
+    }
+    if (*selectionA[Acurrent_selection] < 0){
+      *selectionA[Acurrent_selection] = 23;
+      amorpm = "PM";
+    }
+    if (button_one_result == 1){
+      *selectionA[Acurrent_selection] = *selectionA[Acurrent_selection] + 1;
+    }
+    if (button_two_result == 1){
+      *selectionA[Acurrent_selection] = *selectionA[Acurrent_selection] - 1;
+    }
   }
+  if (Acurrent_selection == 1){
+    if (*selectionA[Acurrent_selection] > 60){
+      *selectionA[Acurrent_selection] = 0;
+    }
+    if (*selectionA[Acurrent_selection] < 0){
+      *selectionA[Acurrent_selection] = 59;
+    }
+    if (button_one_result == 1){
+      *selectionA[Acurrent_selection] = *selectionA[Acurrent_selection] + 1;
+    }
+    if (button_two_result == 1){
+      *selectionA[Acurrent_selection] = *selectionA[Acurrent_selection] - 1;
+    }
+  }
+
+  if (button_one_result == 1 && button_two_result == 1 && Acurrent_selection == 0){
+    Acurrent_selection = Acurrent_selection + 1;
+  }
+  else if (button_one_result == 1 && button_two_result == 1 && Acurrent_selection <= 1){
+    Acurrent_selection = 0;
+    alarminfo = timeinfo;
+    alarminfo.tm_hour = Ahours_select;
+    if (alarminfo.tm_hour < hour24){
+      alarminfo.tm_mday += 1;
+    }
+    alarminfo.tm_min = Aminutes_select;
+
+    alarm_now = mktime(&alarminfo);
+
+    waittime = (signed long long)(alarm_now - time(&timenow));
+  }
+
+  char buffer[16];
+  snprintf(buffer, sizeof(buffer), "%02d:%02d %s",(Ahours_select % 12 == 0) ? 12 : Ahours_select % 12,(Aminutes_select),amorpm);
+  drawtext(2,15,35,buffer);
 }
 
-void compassAPP(float batterylife){
-  inMenu = false;
-  inCompass = true;
-  oled.fill(0);
-  oled.rect(0,0,128,20,1);
-  oled.rect(1,1,16,16,0);
-  battery(batterylife, 1);
-  oled.invertText(true);
-  drawtext(1, rightalign("Compass", 0, 1), 8, "Compass");
-  oled.invertText(false);
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inCompass = false;
-      inHome = true;
-  }
-
-  //TODO: Set up/steal a compass interface
-
-  //TODO: Read from the magnometer and rotate the compass dial as expected
-}
-
+/*
+CANNED FOR V1 FIRMWARE PUSH, WILL COME BACK
 void golfAPP(float batterylife){
   inMenu = false;
   inGolf = true;
@@ -676,12 +1079,8 @@ void golfAPP(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Golf", 0, 1), 8, "Golf");
   oled.invertText(false);
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inGolf = false;
-      inHome = true;
-  }
 }
+*/
 
 void findphoneAPP(float batterylife){
   inMenu = false;
@@ -695,11 +1094,7 @@ void findphoneAPP(float batterylife){
   oled.invertText(false);
 
   //TODO: Setup an HTTP client call to send an emergency priority ring to my phone
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inFind = false;
-      inHome = true;
-  }
+
 }
 
 void settingsAPP(float batterylife){
@@ -713,21 +1108,90 @@ void settingsAPP(float batterylife){
   drawtext(1, rightalign("Settings", 0, 1), 8, "Settings");
   oled.invertText(false);
 
+  int button_one_result = Buttonlogic(Button1,s_start,s_last_state,s_length);
+  int button_two_result = Buttonlogic(Button2,s2_start,s2_last_state,s2_length);
+
+  oled.drawBitmap(13, 24, ICON_FLASH, FLASH_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 24, LABEL_FLASHLIGHTSETTINGS, LABEL_FLASHLIGHTSETTINGS_W, 8);
+
+  oled.drawBitmap(13, 34, ICON_COMPASS, COMPASS_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 34, LABEL_CALIBRATECOMPASS, LABEL_CALIBRATECOMPASS_W, 8);
+
+  oled.drawBitmap(13, 44, ICON_VERSION, VERSION_W, 8);
+  oled.drawBitmap(13 + 8 + 2, 44, LABEL_VERSION, LABEL_VERSION_W, 8);
+
+  if (button_one_result == 1 && button_two_result == 1){
+    if (SettingsappSelect == 1){
+      weatherAppselect = 1;
+      weatherAPP(averageArray());
+    }
+    if (SettingsappSelect == 2){
+      stopwatchAPP(averageArray());
+    }
+    if (SettingsappSelect == 3){
+      compassAPP(averageArray());
+    }
+  }
+
+  else if (button_two_result == 1){
+    if (SettingsappSelect == 3){
+      SettingsappSelect = 3;
+    }
+    else{
+      SettingsappSelect++;
+    }
+  }
+  else if (button_one_result == 1){
+    if (SettingsappSelect == 1){
+      SettingsappSelect = 1;
+    }
+    else{
+      SettingsappSelect--;
+    }
+  }
+
+  if (SettingsappSelect == 1){
+    oled.drawBitmap(5, 24, ICON_CURSOR, CURSOR_W, 8);
+  }
+  if (SettingsappSelect == 2){
+    oled.drawBitmap(5, 34, ICON_CURSOR, CURSOR_W, 8);
+  }
+  if (SettingsappSelect == 3){
+    oled.drawBitmap(5, 44, ICON_CURSOR, CURSOR_W, 8);
+  }
+
+/*
+  if ((esp_timer_get_time() - calibrationStart) >= 150000000){
+    float nowX = Magne.readMagnetometerX();
+    float nowY = Magne.readMagnetometerY();
+    if (nowX >= currentXmax){
+      currentXmax = nowX;
+    }
+    if (nowX <= currentXmin){
+      currentXmin = nowX;
+    }
+
+    if (nowY >= currentYmax){
+      currentYmax = nowY;
+    }
+    if (nowX <= currentXmin){
+      currentYmin = nowY;
+    }
+    x_offset = ((currentXmax + currentXmin)/2);
+    y_offset = ((currentYmax + currentYmin)/2);
+  }
+*/
+
   //TODO: Import the menu interface again - the Icons
 
-  //TODO: Add settings for things like wifi networks, flashlight brightness, etc
+  //TODO: Add settings for things like flashlight brightness, compass calibration, seeing version number, maybe an easter egg, etc
 
   //TODO: Write to Preferences ROM to save these settings
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inSettings = false;
-      inHome = true;
-  }
 }
 
 bool appCheck(float batterylife){
   if (inHome == true){
-    home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
+    home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), steps);
     return true;
   }
   if (inMenu == true){
@@ -750,10 +1214,10 @@ bool appCheck(float batterylife){
     compassAPP(averageArray());
     return true;
   }
-  if (inGolf == true){
-    golfAPP(averageArray());
-    return true;
-  }
+  //if (inGolf == true){
+    //golfAPP(averageArray());
+    //return true;
+  //}
   if (inFind == true){
     findphoneAPP(averageArray());
     return true;
@@ -762,16 +1226,17 @@ bool appCheck(float batterylife){
     settingsAPP(averageArray());
     return true;
   }
+  return false;
 }
 
-int returnButtonlogic(int button, long starting, long laststate, int length){ //Returns an int based off how a button is pressed. Long press = 1, Short Press = 2
-  if (digitalRead(button) == false && lastButtonstate == false){
-    start = millis();
-    lastButtonstate = true;
+int Buttonlogic(int button, unsigned long &starting, unsigned long &laststate, int &length){ //Returns an int based off how a button is pressed. Long press = 1, Short Press = 2
+  if (digitalRead(button) == false && laststate == false){
+    starting = millis();
+    laststate = true;
   }
-  if (lastButtonstate == true && digitalRead(button) == true){
-    lastButtonstate = false;
-    if (millis() - start <= length){
+  if (laststate == true && digitalRead(button) == true){
+    laststate = false;
+    if (millis() - starting >= length){
       return 2;
     }
     else{
@@ -788,10 +1253,17 @@ void loop() {
 
   appCheck(averageArray());
 
-  if (returnButtonlogic(Button1,return_start,return_last_state,return_length) == 1){
-    if (inMenu == true){
+  if (Buttonlogic(Button1,return_start,return_last_state,return_length) == 2){
+    if (inHome != true){
       home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
       inMenu = false;
+      inWeather= false;
+      inStopwatch = false; 
+      inAlarm = false;
+      inCompass = false; 
+      inGolf = false; 
+      inFind = false; 
+      inSettings = false; 
       inHome = true;
     }
     else{
@@ -800,6 +1272,10 @@ void loop() {
       inMenu = true;
     }
   }
-
   oled.update();
+
+  if (esp_timer_get_time() - lastfetch >= 1800000000){
+    lastfetch = esp_timer_get_time();
+    api_pull();
+  }
 }
