@@ -17,10 +17,13 @@
 #include <cmath>
 #include <ArduinoJson.h>
 #include <HTTPClient.h>
+#include <Preferences.h>
+
 //Icons converted from https://www.iconarchive.com/show/material-battery-icons-by-pictogrammers.html
 #include "batteryicons.h"
 #include "invertedbatteryicons.h"
 #include "nerdwatch_icons.h"
+#include "compass_calibrate_animation.h"
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
@@ -37,6 +40,7 @@ const int   daylightOffset_sec = 3600;
 #define BHI_INT 4
 #define fl 3
 
+Preferences preferences;
 Adafruit_BME680 bme;
 MAGNETOMETER Magne;    
 GyverOLED<SSD1306_128x64, OLED_BUFFER> oled;
@@ -123,7 +127,8 @@ uint64_t desired_end;
 bool aftertime = false;
 
 bool isPM, lastButtonstate;
-bool inHome, inMenu, inWeather, inStopwatch, inAlarm, inCompass, inGolf, inFind, inSettings; 
+bool inHome, inMenu, inWeather, inStopwatch, inAlarm, inCompass, inCC, inGolf, inFind, inVersion, inFLS, inSettings; 
+bool doneCalibrating = false;
 bool swAppselect = true;
 int64_t lastfetch;
 String payload;
@@ -175,13 +180,15 @@ int stepday = 0;
 uint16_t steps = 0;
 uint16_t yesterdaySteps = 0;
 
-
 float currentXmax = 0;
 float currentYmax = 0;
 float currentXmin = 0;
 float currentYmin = 0;
 
 int SettingsappSelect = 1;
+
+bool first_compass_run;
+uint64_t calibrationStart = 0;
 
 void tiltHandler(bhyVirtualSensor id){
   return;
@@ -201,16 +208,19 @@ void stepHandler(uint16_t data, bhyVirtualSensor id){
 
 uint64_t last_chop = 0;
 bool isFlashOn = false;
+int flashBrightness;
 
 void flashHandle(uint16_t data, bhyVirtualSensor id){
   if (esp_timer_get_time() - last_chop <= 500000){
     last_chop = esp_timer_get_time();
     isFlashOn = !isFlashOn;
     if (isFlashOn == true){
+      light.setBrightness(flashBrightness);
       light.setPixelColor(0,255,255,255);
       light.show();
     }
     else{
+      light.setBrightness(flashBrightness); 
       light.setPixelColor(0,0,0,0);
       light.show();
     }
@@ -326,7 +336,10 @@ void api_pull(){
   }
 
 void setup() {
-  Serial.begin(9600);
+  preferences.begin("my-app", false); 
+  flashBrightness = preferences.getInt("fb", 128);
+  x_offset = preferences.getFloat("c_xoff", 0);
+  y_offset = preferences.getFloat("c_yoff", 0);
 
   pinMode(battery_pin, INPUT);
   pinMode(Button1, INPUT_PULLUP);
@@ -341,7 +354,7 @@ void setup() {
   oximeter.begin();
   bme.begin();
   Magne.begin(0x60); //Magne.readMagnetometerX()
-  inHome=inMenu=inWeather=inStopwatch=inAlarm=inCompass=inGolf=inFind=inSettings=false; 
+  inHome=inMenu=inWeather=inStopwatch=inAlarm=inCompass=inGolf=inFind=inFLS=inVersion=inSettings=false; 
   inHome = true;
 
   bhi.begin(BHY_I2C_ADDR2);
@@ -545,11 +558,8 @@ void menu(float batterylife){
   oled.drawBitmap(73, 24, ICON_CRASH, CRASH_W, 8);
   oled.drawBitmap(73 + 8 + 2, 24, LABEL_CRASH, LABEL_CRASH_W, 8);
 
-  oled.drawBitmap(73, 34, ICON_FINDPHONE, FINDPHONE_W, 8);
-  oled.drawBitmap(73 + 8 + 2, 34, LABEL_FINDPHONE, LABEL_FINDPHONE_W, 8);
-
-  oled.drawBitmap(73, 44, ICON_SETTINGS, SETTINGS_W, 8);
-  oled.drawBitmap(73 + 8 + 2, 44, LABEL_SETTINGS, LABEL_SETTINGS_W, 8);
+  oled.drawBitmap(73, 34, ICON_SETTINGS, SETTINGS_W, 8);
+  oled.drawBitmap(73 + 8 + 2, 34, LABEL_SETTINGS, LABEL_SETTINGS_W, 8);
 
   int button_one_result = Buttonlogic(Button1,m_start,m_last_state,m_length);
   int button_two_result = Buttonlogic(Button2,m2_start,m2_last_state,m2_length);
@@ -572,16 +582,13 @@ void menu(float batterylife){
       crashAPP();
     }
     if (appSelect == 6){
-      findphoneAPP(averageArray());
-    }
-    if (appSelect == 7){
       settingsAPP(averageArray());
     }
   }
 
   else if (button_two_result == 1){
-    if (appSelect == 7){
-      appSelect = 7;
+    if (appSelect == 6){
+      appSelect = 6;
     }
     else{
       appSelect++;
@@ -1082,19 +1089,87 @@ void golfAPP(float batterylife){
 }
 */
 
-void findphoneAPP(float batterylife){
-  inMenu = false;
-  inFind = true;
+void calibrateCompass(float batterylife){
+  inCC = true;
+  inSettings = false;
   oled.fill(0);
   oled.rect(0,0,128,20,1);
   oled.rect(1,1,16,16,0);
   battery(batterylife, 1);
   oled.invertText(true);
-  drawtext(1, rightalign("Find Phone", 0, 1), 8, "Find Phone");
+  drawtext(1, rightalign("Settings", 0, 1), 8, "Settings");
+  oled.invertText(false);
+  drawtext(1, 5, 24, "Calibrating Compass");
+
+  static uint8_t frameIdx = 0;
+  static unsigned long lastMs = 0;
+  const uint8_t* frames[] = {frame0, frame1, frame2, frame3, frame4, frame5, frame6, frame7, frame8, frame9, frame10, frame11, frame12, frame13, frame14};
+  const uint8_t numFrames = 15;
+  if (millis() - lastMs >= 67) {
+    lastMs = millis();
+    oled.drawBitmap(0, 0, frames[frameIdx], 128, 64);
+    frameIdx = (frameIdx + 1) % numFrames;
+  }
+  if (first_compass_run == true){
+    calibrationStart = esp_timer_get_time();
+    first_compass_run = false;
+  }
+  if ((esp_timer_get_time() - calibrationStart) <= 10000000){
+    float nowX = Magne.readMagnetometerX();
+    float nowY = Magne.readMagnetometerY();
+    if (nowX >= currentXmax){
+      currentXmax = nowX;
+    }
+    if (nowX <= currentXmin){
+      currentXmin = nowX;
+    }
+
+    if (nowY >= currentYmax){
+      currentYmax = nowY;
+    }
+    if (nowY <= currentYmin){
+      currentYmin = nowY;
+    }
+  }
+  else{
+    x_offset = ((currentXmax + currentXmin)/2);
+    y_offset = ((currentYmax + currentYmin)/2);
+
+    preferences.putFloat("c_xoff", x_offset);
+    preferences.putFloat("c_yoff", y_offset);
+
+    doneCalibrating = true;
+  }
+  if (doneCalibrating == true){
+    inCC = false;
+    inHome = true;
+  }
+}
+
+void FLS(float batterylife){
+  inFLS = true;
+  inSettings = false;
+  oled.fill(0);
+  oled.rect(0,0,128,20,1);
+  oled.rect(1,1,16,16,0);
+  battery(batterylife, 1);
+  oled.invertText(true);
+  drawtext(1, rightalign("Settings", 0, 1), 8, "Settings");
+  oled.invertText(false);
+}
+
+void vers(float batterylife){
+  inVersion = true;
+  inSettings = false;
+  oled.fill(0);
+  oled.rect(0,0,128,20,1);
+  oled.rect(1,1,16,16,0);
+  battery(batterylife, 1);
+  oled.invertText(true);
+  drawtext(1, rightalign("Settings", 0, 1), 8, "Settings");
   oled.invertText(false);
 
-  //TODO: Setup an HTTP client call to send an emergency priority ring to my phone
-
+  oled.drawBitmap(2, 23, QR, QR_W, 41);
 }
 
 void settingsAPP(float batterylife){
@@ -1122,14 +1197,15 @@ void settingsAPP(float batterylife){
 
   if (button_one_result == 1 && button_two_result == 1){
     if (SettingsappSelect == 1){
-      weatherAppselect = 1;
-      weatherAPP(averageArray());
+      FLS(averageArray());
     }
     if (SettingsappSelect == 2){
-      stopwatchAPP(averageArray());
+      first_compass_run = true;
+      calibrateCompass(averageArray());
+      doneCalibrating = false;
     }
     if (SettingsappSelect == 3){
-      compassAPP(averageArray());
+      vers(averageArray());
     }
   }
 
@@ -1159,28 +1235,7 @@ void settingsAPP(float batterylife){
   if (SettingsappSelect == 3){
     oled.drawBitmap(5, 44, ICON_CURSOR, CURSOR_W, 8);
   }
-
-/*
-  if ((esp_timer_get_time() - calibrationStart) >= 150000000){
-    float nowX = Magne.readMagnetometerX();
-    float nowY = Magne.readMagnetometerY();
-    if (nowX >= currentXmax){
-      currentXmax = nowX;
-    }
-    if (nowX <= currentXmin){
-      currentXmin = nowX;
-    }
-
-    if (nowY >= currentYmax){
-      currentYmax = nowY;
-    }
-    if (nowX <= currentXmin){
-      currentYmin = nowY;
-    }
-    x_offset = ((currentXmax + currentXmin)/2);
-    y_offset = ((currentYmax + currentYmin)/2);
-  }
-*/
+  preferences.putInt("fb", flashBrightness);
 
   //TODO: Import the menu interface again - the Icons
 
@@ -1218,12 +1273,20 @@ bool appCheck(float batterylife){
     //golfAPP(averageArray());
     //return true;
   //}
-  if (inFind == true){
-    findphoneAPP(averageArray());
-    return true;
-  }
   if (inSettings == true){
     settingsAPP(averageArray());
+    return true;
+  }
+  if (inCC == true){
+    calibrateCompass(averageArray());
+    return true;
+  }
+  if (inFLS == true){
+    FLS(averageArray());
+    return true;
+  }
+  if (inVersion == true){
+    vers(averageArray());
     return true;
   }
   return false;
@@ -1246,6 +1309,22 @@ int Buttonlogic(int button, unsigned long &starting, unsigned long &laststate, i
   return 0;
 }
 
+void goHome(){
+  home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
+  inMenu = false;
+  inWeather= false;
+  inStopwatch = false; 
+  inAlarm = false;
+  inCompass = false; 
+  inGolf = false; 
+  inFind = false; 
+  inSettings = false; 
+  inCC = false;
+  inFLS = false;
+  inVersion = false;
+  inHome = true;
+}
+
 void loop() {
   oled.fill(0);
   printlocaltime();
@@ -1255,16 +1334,7 @@ void loop() {
 
   if (Buttonlogic(Button1,return_start,return_last_state,return_length) == 2){
     if (inHome != true){
-      home(averageArray(), bme.temperature, buildTime(), buildDate(), oximeter.getHeartRate(), 10000);
-      inMenu = false;
-      inWeather= false;
-      inStopwatch = false; 
-      inAlarm = false;
-      inCompass = false; 
-      inGolf = false; 
-      inFind = false; 
-      inSettings = false; 
-      inHome = true;
+      goHome();
     }
     else{
       menu(averageArray());

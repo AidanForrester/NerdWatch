@@ -74,7 +74,7 @@
     {
       "type": "wokwi-pushbutton-6mm",
       "id": "btn2",
-      "top": 218.6,
+      "top": 209,
       "left": 96,
       "attrs": { "color": "green", "xray": "1", "key": "ArrowUp" }
     },
