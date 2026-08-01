@@ -24,6 +24,7 @@
 #include "invertedbatteryicons.h"
 #include "nerdwatch_icons.h"
 #include "compass_calibrate_animation.h"
+#include "wakeup_animation.h"
 
 const char* ssid = "Wokwi-GUEST";
 const char* password = "";
@@ -1423,6 +1424,11 @@ void goHome(){
   inHome = true;
 }
 
+uint64_t animationFirstrun;
+bool firstTimealarm = true;
+int sunframe = 0;
+int factor = 1;
+
 void WAKEY(){
     if (esp_timer_get_time() - last_buzz >= 100000){
       last_buzz = esp_timer_get_time();
@@ -1434,6 +1440,18 @@ void WAKEY(){
       digitalWrite(Haptic, LOW);
     }
   }
+
+  if (esp_timer_get_time() - animationFirstrun >= 25000){
+  	sunframe = (sunframe + factor);
+    if (sunframe >= 20){
+      factor = -1;
+    }
+    if (sunframe <= 0){
+      factor = 1;
+    }
+    animationFirstrun = esp_timer_get_time();
+  }
+  oled.drawBitmap(32, 0, sun[sunframe], 64, 64);
   drawtext(2,17,27,buildTime());
 }
 
@@ -1458,7 +1476,7 @@ void inactivityCheck(){
       inactivityStart = esp_timer_get_time();
     }
     if (isInactive == true){
-      if (esp_timer_get_time() - inactivityStart >= 30000000){
+      if ((esp_timer_get_time() - inactivityStart >= 30000000) && shouldWake == false){
         isInactive = false;
         
         if (alarmSet == true){
@@ -1475,13 +1493,22 @@ void inactivityCheck(){
 }
 
 void loop() {
+  oled.fill(0);
+  printlocaltime();
+  manageInput(readBattery());
+  
   Global_Button_1 = Buttonlogic(Button1, global_start, global_last_state, global_length);
   Global_Button_2 = Buttonlogic(Button2, global_start2, global_last_state2, global_length2);
   
   if (alarmSet == true){
     waittime = ((signed long long)(alarm_now - time(&timenow)) * 1000000ULL);
     if (waittime <= 5000 || shouldWake == true){
+      if (firstTimealarm == true){
+        animationFirstrun = esp_timer_get_time();
+        firstTimealarm = false;
+      }
       goHome();
+      oled.fill(0);
       inHome = false;
       shouldWake = true;
 
@@ -1490,21 +1517,18 @@ void loop() {
         goHome();
         alarmSet = false;
         shouldWake = false;
+        firstTimealarm = true;
       }
     }
   }
+
+  appCheck(averageArray());
 
   if (Global_Button_1 != 0 || Global_Button_2 != 0 || doBuzz == true){
     gentle_buzz();
   }
 
   inactivityCheck();
-
-  oled.fill(0);
-  printlocaltime();
-  manageInput(readBattery());
-
-  appCheck(averageArray());
 
   if (Buttonlogic(Button1,return_start,return_last_state,return_length) == 2){
     if (inHome != true){
