@@ -96,6 +96,14 @@ unsigned long m2_start; //globals for the long press state machine - menu button
 unsigned long m2_last_state;
 int m2_length = 1500;
 
+unsigned long fls1_start; //globals for the long press state machine - FLS Up
+unsigned long fls1_last_state;
+int fls1_length = 1500;
+
+unsigned long fls2_start; //globals for the long press state machine - FLS down
+unsigned long fls2_last_state;
+int fls2_length = 1500;
+
 bool sw_on = false;
 
 int hours_select = 0;
@@ -113,6 +121,21 @@ int alarm_length = 1500;
 unsigned long alarm2_start; 
 unsigned long alarm2_last_state;
 int alarm2_length = 1500;
+
+unsigned long global_start; //globals for the long press state machine - Inactivity Check
+unsigned long global_last_state;
+int global_length = 1500;
+
+unsigned long global_start2; //globals for the long press state machine - Inactivity Check Button 2
+unsigned long global_last_state2;
+int global_length2 = 1500;
+
+int Inactivity_Button_1 = 0;
+int Inactivity_Button_2 = 0;
+uint64_t inactivityStart = 0;
+bool isInactive = false;
+
+bool alarmSet = false;
 
 const char* amorpm = "AM";
 uint64_t desired_wakeup = 0;
@@ -189,6 +212,20 @@ int SettingsappSelect = 1;
 
 bool first_compass_run;
 uint64_t calibrationStart = 0;
+
+int flsUnitselect = 0;
+int currentFLSindex = 0;
+int flsUnit[3] = {5,10,100};
+
+uint64_t last_buzz = 0;
+bool isBuzzerOn = false;
+bool shouldWake = false;
+
+int Global_Button_1;
+int Global_Button_2;
+
+bool doBuzz = false;
+uint64_t gentleStart;
 
 void tiltHandler(bhyVirtualSensor id){
   return;
@@ -337,7 +374,7 @@ void api_pull(){
 
 void setup() {
   preferences.begin("my-app", false); 
-  flashBrightness = preferences.getInt("fb", 128);
+  flashBrightness = preferences.getInt("fb", 255);
   x_offset = preferences.getFloat("c_xoff", 0);
   y_offset = preferences.getFloat("c_yoff", 0);
 
@@ -368,8 +405,6 @@ void setup() {
 
   bhi.configVirtualSensor((bhyVirtualSensor)BHY_VS_TILT, true, BHY_FLUSH_ALL, 0, 0, 0, 0);
   int8_t result2 = bhi.installSensorCallback(BHY_VS_TILT, true, tiltHandler);
-
-  esp_deep_sleep_enable_gpio_wakeup(1ULL << BHI_INT, ESP_GPIO_WAKEUP_GPIO_HIGH);
 
   bhi.getSensorStatus((bhyVirtualSensor)BHY_VS_TILT, true, &sensorStatus);
   if (sensorStatus.power_mode == 7){
@@ -1067,6 +1102,8 @@ void alarmAPP(float batterylife){
     alarm_now = mktime(&alarminfo);
 
     waittime = (signed long long)(alarm_now - time(&timenow));
+    waittime = waittime * 1000000ULL;
+    alarmSet = true;
   }
 
   char buffer[16];
@@ -1156,6 +1193,74 @@ void FLS(float batterylife){
   oled.invertText(true);
   drawtext(1, rightalign("Settings", 0, 1), 8, "Settings");
   oled.invertText(false);
+
+  int button_one_result = Buttonlogic(Button1,fls1_start,fls1_last_state,fls1_length);
+  int button_two_result = Buttonlogic(Button2,fls2_start,fls2_last_state,fls2_length);
+
+  drawtext(1,0,24,"1 SP=Up");
+  drawtext(1,0,32,"2 SP=Down");
+  drawtext(1,0,40,"2 LP=Unit");
+  drawtext(1,0,56,"1+2 SP=Save");
+
+  if (button_one_result == 1 && currentFLSindex == 0){
+    flashBrightness =  flashBrightness + 5;
+    if (flashBrightness > 255){
+      flashBrightness = 0;
+    }
+  }
+  if (button_two_result == 1 && currentFLSindex == 0){
+    flashBrightness =  flashBrightness - 5;
+    if (flashBrightness < 0){
+      flashBrightness = 255;
+    }
+  }
+
+  if (button_one_result == 1 && currentFLSindex == 1){
+    flashBrightness =  flashBrightness + 10;
+    if (flashBrightness > 255){
+      flashBrightness = 0;
+    }
+  }
+  if (button_two_result == 1 && currentFLSindex == 1){
+    flashBrightness =  flashBrightness - 10;
+    if (flashBrightness < 0){
+      flashBrightness = 255;
+    }
+  }
+
+  if (button_one_result == 1 && currentFLSindex == 2){
+    flashBrightness =  flashBrightness + 100;
+    if (flashBrightness > 255){
+      flashBrightness = 0;
+    }
+  }
+  if (button_two_result == 1 && currentFLSindex == 2){
+    flashBrightness =  flashBrightness - 100;
+    if (flashBrightness < 0){
+      flashBrightness = 255;
+    }
+  }
+
+  if (button_two_result == 2){
+    if (currentFLSindex >= 0 && currentFLSindex < 2){
+      currentFLSindex++;
+      flsUnitselect = flsUnit[currentFLSindex];
+    }
+    else{
+      currentFLSindex = 0;
+      flsUnitselect = flsUnit[currentFLSindex];
+    }
+  }
+
+  if (button_one_result == 1 && button_two_result == 1){
+    preferences.putInt("fb", flashBrightness);
+    inFLS = false;
+    inHome = true;
+  }
+
+  char Str[32];
+  snprintf(Str, sizeof(Str), "%03d", flashBrightness);
+  drawtext(3,66,32,Str);
 }
 
 void vers(float batterylife){
@@ -1235,13 +1340,6 @@ void settingsAPP(float batterylife){
   if (SettingsappSelect == 3){
     oled.drawBitmap(5, 44, ICON_CURSOR, CURSOR_W, 8);
   }
-  preferences.putInt("fb", flashBrightness);
-
-  //TODO: Import the menu interface again - the Icons
-
-  //TODO: Add settings for things like flashlight brightness, compass calibration, seeing version number, maybe an easter egg, etc
-
-  //TODO: Write to Preferences ROM to save these settings
 }
 
 bool appCheck(float batterylife){
@@ -1325,7 +1423,83 @@ void goHome(){
   inHome = true;
 }
 
+void WAKEY(){
+    if (esp_timer_get_time() - last_buzz >= 100000){
+      last_buzz = esp_timer_get_time();
+      isBuzzerOn = !isBuzzerOn;
+    if (isBuzzerOn == true){
+      digitalWrite(Haptic, HIGH);
+    }
+    else{
+      digitalWrite(Haptic, LOW);
+    }
+  }
+  drawtext(2,17,27,buildTime());
+}
+
+void gentle_buzz(){
+  if (doBuzz == false){
+    doBuzz = true;
+    gentleStart = esp_timer_get_time();
+  }
+  if (esp_timer_get_time() - gentleStart <= 130000){
+        digitalWrite(Haptic, HIGH);
+  }
+  else{
+    doBuzz = false;
+    digitalWrite(Haptic, LOW);
+  }
+}
+
+void inactivityCheck(){
+    if (Global_Button_1 == 0 && Global_Button_2 == 0){
+    if (isInactive == false){
+      isInactive = true;
+      inactivityStart = esp_timer_get_time();
+    }
+    if (isInactive == true){
+      if (esp_timer_get_time() - inactivityStart >= 30000000){
+        isInactive = false;
+        
+        if (alarmSet == true){
+          esp_sleep_enable_timer_wakeup(waittime);
+        }
+        gpio_wakeup_enable((gpio_num_t)BHI_INT, GPIO_INTR_HIGH_LEVEL);
+        gpio_wakeup_enable((gpio_num_t)Button1, GPIO_INTR_LOW_LEVEL);
+        gpio_wakeup_enable((gpio_num_t)Button2, GPIO_INTR_LOW_LEVEL);
+        esp_sleep_enable_gpio_wakeup();
+        esp_light_sleep_start();
+      }
+    }
+  }
+}
+
 void loop() {
+  Global_Button_1 = Buttonlogic(Button1, global_start, global_last_state, global_length);
+  Global_Button_2 = Buttonlogic(Button2, global_start2, global_last_state2, global_length2);
+  
+  if (alarmSet == true){
+    waittime = ((signed long long)(alarm_now - time(&timenow)) * 1000000ULL);
+    if (waittime <= 5000 || shouldWake == true){
+      goHome();
+      inHome = false;
+      shouldWake = true;
+
+      WAKEY();
+      if (Global_Button_1 != 0 || Global_Button_2 != 0){
+        goHome();
+        alarmSet = false;
+        shouldWake = false;
+      }
+    }
+  }
+
+  if (Global_Button_1 != 0 || Global_Button_2 != 0 || doBuzz == true){
+    gentle_buzz();
+  }
+
+  inactivityCheck();
+
   oled.fill(0);
   printlocaltime();
   manageInput(readBattery());
