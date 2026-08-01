@@ -1276,6 +1276,9 @@ void vers(float batterylife){
   oled.invertText(false);
 
   oled.drawBitmap(2, 23, QR, QR_W, 41);
+  drawtext(1,47,32,"NerdWatch");
+  drawtext(1,47,40,"Version P1.0");
+  drawtext(1,47,48,"Pre-Hardware");
 }
 
 void settingsAPP(float batterylife){
