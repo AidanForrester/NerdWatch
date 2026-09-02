@@ -4,7 +4,7 @@
 
 #include <GyverOLED.h>
 #include <AdvancedOximeter.h>
-#include <Deneyap_9EksenAtaletselOlcumBirimi.h>  
+#include <SparkFun_MMC5983MA_Arduino_Library.h>
 #include <Adafruit_BME680.h>
 #include <Adafruit_NeoPixel.h>
 
@@ -43,7 +43,7 @@ const int   daylightOffset_sec = 3600;
 
 Preferences preferences;
 Adafruit_BME680 bme;
-MAGNETOMETER Magne;    
+SFE_MMC5983MA Magne;    
 GyverOLED<SSD1306_128x64, OLED_BUFFER> oled;
 AdvancedOximeter oximeter;
 BHYSensor bhi;
@@ -184,13 +184,14 @@ struct tm alarminfo;
 float heading = 0;
 float nadjusted = 0;
 float dheading = 0;
-float x_offset = 0;
-float y_offset = 0;
 
-float xstart = 93;
-float ystart = 32;
-float xend = 0;
-float yend = 0;
+uint32_t x_offset = 0;
+uint32_t y_offset = 0;
+
+uint32_t xstart = 93;
+uint32_t ystart = 32;
+uint32_t xend = 0;
+uint32_t yend = 0;
 
 time_t timenow;
 RTC_DATA_ATTR time_t alarm_now;
@@ -376,8 +377,8 @@ void api_pull(){
 void setup() {
   preferences.begin("my-app", false); 
   flashBrightness = preferences.getInt("fb", 255);
-  x_offset = preferences.getFloat("c_xoff", 0);
-  y_offset = preferences.getFloat("c_yoff", 0);
+  x_offset = preferences.getUInt("c_xoff", 0);
+  y_offset = preferences.getUInt("c_yoff", 0);
 
   pinMode(battery_pin, INPUT);
   pinMode(Button1, INPUT_PULLUP);
@@ -391,7 +392,8 @@ void setup() {
   oled.init();
   oximeter.begin();
   bme.begin();
-  Magne.begin(0x60); //Magne.readMagnetometerX()
+  Magne.begin();
+  Magne.softReset();
   inHome=inMenu=inWeather=inStopwatch=inAlarm=inCompass=inGolf=inFind=inFLS=inVersion=inSettings=false; 
   inHome = true;
 
@@ -1011,6 +1013,10 @@ void stopwatchAPP(float batterylife){
   }
 }
 
+uint32_t rawX = 0;
+uint32_t rawY = 0;
+uint32_t rawZ = 0;
+
 void compassAPP(float batterylife){
   inMenu = false;
   inCompass = true;
@@ -1022,8 +1028,10 @@ void compassAPP(float batterylife){
   drawtext(1, 5, 56, "Compass");
   oled.invertText(false);
 
-  heading = atan2((Magne.readMagnetometerY() - y_offset), (Magne.readMagnetometerX() - x_offset));
-  dheading = atan2((Magne.readMagnetometerY() - y_offset), (Magne.readMagnetometerX() - x_offset))*(180/PI);
+  Magne.getMeasurementXYZ(&rawX, &rawY, &rawZ);
+
+  heading = atan2((rawY - y_offset), (rawX - x_offset));
+  dheading = atan2((rawY - y_offset), (rawX - x_offset))*(180/PI);
 
   tocharinverted(heading,"",1,5,32);
 
@@ -1153,8 +1161,12 @@ void calibrateCompass(float batterylife){
     first_compass_run = false;
   }
   if ((esp_timer_get_time() - calibrationStart) <= 10000000){
-    float nowX = Magne.readMagnetometerX();
-    float nowY = Magne.readMagnetometerY();
+    uint32_t nowX = 0;
+    uint32_t nowY = 0;
+    uint32_t nowZ = 0;
+
+    Magne.getMeasurementXYZ(&nowX, &nowY, &nowZ);
+
     if (nowX >= currentXmax){
       currentXmax = nowX;
     }
@@ -1173,8 +1185,8 @@ void calibrateCompass(float batterylife){
     x_offset = ((currentXmax + currentXmin)/2);
     y_offset = ((currentYmax + currentYmin)/2);
 
-    preferences.putFloat("c_xoff", x_offset);
-    preferences.putFloat("c_yoff", y_offset);
+    preferences.putUInt("c_xoff", x_offset);
+    preferences.putUInt("c_yoff", y_offset);
 
     doneCalibrating = true;
   }

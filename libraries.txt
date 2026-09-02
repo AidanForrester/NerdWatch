@@ -1,0 +1,13 @@
+# Wokwi Library List
+# See https://docs.wokwi.com/guides/libraries
+
+Adafruit BME680 Library
+GyverOLED
+AdvancedOximeter
+WiFi
+Time
+ArduinoJson
+BoschSensorHub-master@wokwi:2cf191abf8b2739c4be1e4a4629eed20919b90d1
+Adafruit NeoPixel
+Preferences
+SparkFun MMC5983MA Magnetometer Arduino Library
